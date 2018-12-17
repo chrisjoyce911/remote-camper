@@ -52,6 +52,7 @@
 
 #include <esp32fota.h>
 #include <WiFi.h>
+#include <DNSServer.h>
 #include <ESPAsyncWebServer.h>
 
 #include "credentials.h"
@@ -66,6 +67,10 @@
 // const char* mqtt_server = ".....";
 
 
+const byte DNS_PORT = 53;
+IPAddress apIP(192, 168, 1, 1);
+DNSServer dnsServer;
+
 
 // Set web server port number to 80
 AsyncWebServer server(80);
@@ -73,8 +78,7 @@ AsyncWebServer server(80);
 const char * html = "<!DOCTYPE html><html>"
 "<head>"
 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-"<meta name=\"apple-mobile-web-app-capable\" content=\"yes\">"
-"<meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black\">"
+
 "<link rel=\"icon\" href=\"data:,\">"
 
 "<style>"
@@ -203,8 +207,25 @@ void setup()
 
   //esp32FOTA.checkURL = "http://server/fota/fota.json";
   Serial.begin(115200);
-  setup_wifi();
+  
+  // setup_wifi();
+  setup_wifi_AP();
   SetupWebServer() ;
+
+}
+
+void setup_wifi_AP() {
+  delay(10);
+  Serial.print("CSetting up AP ");
+  Serial.println(ssid);
+
+
+  WiFi.mode(WIFI_AP);
+  WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
+  WiFi.softAP(APssid, APpassword);
+  // if DNSServer is started with "*" for domain name, it will reply with
+  // provided IP to all DNS request
+  dnsServer.start(DNS_PORT, "*", apIP);
 
 }
 
@@ -228,7 +249,7 @@ void setup_wifi()
 
 void loop()
 {
-
+  dnsServer.processNextRequest();
   buttonloop();
   firmwareloop();
 }
@@ -465,6 +486,11 @@ void buttonloop()
 
 void SetupWebServer()
 {
+
+  server.onNotFound([](AsyncWebServerRequest *request){
+    request->send_P(200, "text/html", html, processor);
+  });
+  
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/html", html, processor);
   });
