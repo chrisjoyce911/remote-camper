@@ -30,7 +30,7 @@ int Relay2 = 13;
 int Relay3 = 12;
 int Relay4 = 14;
 
-bool RelayState1 = HIGH;
-bool RelayState2 = HIGH;
-bool RelayState3 = HIGH;
-bool RelayState4 = HIGH;
+bool RelayState1 = LOW;
+bool RelayState2 = LOW;
+bool RelayState3 = LOW;
+bool RelayState4 = LOW;

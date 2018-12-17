@@ -1,7 +1,9 @@
 #### VARIABLES ####
 SHELL := /bin/bash
-BOARD := arduino:samd:mkr1000
+BOARD := esp32:esp32:esp32
 PORT  := /dev/cu.SLAB_USBtoUART
+
+# esp32.ttgo-lora32-v1
 
 
 .PHONY: list

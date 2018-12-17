@@ -1,2 +1,6 @@
 .DS_Store
 main-controller/credentials.h
+local/TTGO-T8-ESP32.jpg
+local/sdcard lolin32.png
+.vscode/arduino.json
+.vscode/c_cpp_properties.json

@@ -1,43 +1,48 @@
 /**
-   esp32 firmware OTA
+ TTGO-T8-ESP32
+ 
+ GND  [GROUND]
+ 3v3  [3.3V]
+  21  [SDA][GPIO21][V_SPI_HD][LED]
+ TXD  [CLX3][GPIO01][V_SPI_TXD]
+ RXD  [CLX2][GPIO03][V_SPI_RXD]
+  22  [SCL][GPIO22][V_SPI_WP]           [ESP32 IO22 – I2S codec DATA]
+  19  [GPIO19][V_SPI_Q][V0_CTS]
+  23  [GPIO23][V_SPI_D]
+  18  [GPIO18][V_SPI_CLK]
+   5  [GPIO05][V_SPI_SCO]
+   2  [GPIO02][ADC2_2][HSPI_WP][TOUCH2]
+ GND  [GROUND]
+   0  [CLX1][GPIO00][ADC2_1][TOUCH1]
+   4  [GPIO04][ADC2_0][HSPI_HD][TOUCH0]
+  5v  [5V]
 
-   0
-   1
-   2
-   3
-   4
-   5
-   6
-   7
-   8
-   9
-  10
-  11
-  12  Relay3
-  13  Relay2  
-  14  Relay4
-  15  Relay1
-  16
-  17
-  18
-  19
-  20
-  21  OnBoard LED
-  22
-  23
-  24
-  25  ButtonPin2
-  26  ButtonPin1
-  27  HomeNetwork for FOTA
-  28
-  29
-  30
-  31
-  32  ButtonPin4
-  33  ButtonPin3
-  34
-  35
+  VP  [36][S_VP][GPIO36][ADC1_0*]
+  VN  [39][S_VN][GPIO39][ADC1_3*]
+ RST  [Reset]
+  34  [GPIO34][ADC1_6*]
+  35  [GPIO35][ADC1_7*]
+  32  [XTAL32][GPIO32][ADC1_4*]          ButtonPin4
+  33  [XTAL33][GPIO33][ADC1_5*]          ButtonPin3            [ESP32 IO33 – CS MICROSD]
+  25  [GPIO25][ADC2_8*][DAC2]            ButtonPin2            [ESP32 IO25 – I2S codec LRCK]
+  26  [GPIO26][ADC2_9][DAC1]             ButtonPin1            [ESP32 IO26 – I2S codec BCK]
+  27  [GPIO27][ADC2_7*][TOUCH7]          HomeNetwork for FOTA  [ESP32 IO27 – SCK MICROSD]
+  14  [GPIO14][ADC2_6*][TOUCH6]          Relay4                [ESP32 IO14 – MOSI MICROSD]
+  12  [GPIO12][ADC2_5*][TOUCH5]          Relay3
+  13  [GPIO13][ADC2_4][TOUCH4]           Relay2                [ESP32 IO12 – MISO MICROSD]
+  15  [GPIO15][ADC2_3][HSPI_CSO][TOUCH7] Relay1  
+ GND  [GROUND]
 
+
+[ESP32 IO33 – CS MICROSD]
+[ESP32 IO14 – MOSI MICROSD]
+[ESP32 IO12 – MISO MICROSD]
+[ESP32 IO27 – SCK MICROSD]
+[ESP32 IO26 – I2S codec BCK]
+[ESP32 IO22 – I2S codec DATA]
+[ESP32 IO25 – I2S codec LRCK]
+[ESP32 GND – I2S codec GND]
+[ESP32 GND – GND MICROSD]
 
 */
 #include <OneWire.h>
@@ -87,10 +92,10 @@ void setup()
   pinMode(Relay3, OUTPUT);
   pinMode(Relay4, OUTPUT);
 
-  digitalWrite(Relay1, RelayState1);
-  digitalWrite(Relay2, RelayState2);
-  digitalWrite(Relay3, RelayState3);
-  digitalWrite(Relay4, RelayState4);
+  digitalWrite(Relay1, !RelayState1);
+  digitalWrite(Relay2, !RelayState2);
+  digitalWrite(Relay3, !RelayState3);
+  digitalWrite(Relay4, !RelayState4);
 
   //esp32FOTA.checkURL = "http://server/fota/fota.json";
   Serial.begin(115200);
@@ -148,35 +153,35 @@ void loop()
             // turns the GPIOs on and off
             if (header.indexOf("GET /01/on") >= 0)
             {
-              setRelay1(bool true)
+              setRelay1( true);
             }
             else if (header.indexOf("GET /01/off") >= 0)
             {
-              setRelay1(bool false)
+              setRelay1( false);
             }
             else if (header.indexOf("GET /02/on") >= 0)
             {
-              setRelay2(bool true)
+              setRelay2( true);
             }
             else if (header.indexOf("GET /02/off") >= 0)
             {
-              setRelay2(bool false)
+              setRelay2( false);
             }
             else if (header.indexOf("GET /03/on") >= 0)
             {
-              setRelay3(bool true)
+              setRelay3( true);
             }
             else if (header.indexOf("GET /03/off") >= 0)
             {
-              setRelay3(bool false)
+              setRelay3( false);
             }
             else if (header.indexOf("GET /04/on") >= 0)
             {
-              setRelay4(bool true)
+              setRelay4( true);
             }
             else if (header.indexOf("GET /04/off") >= 0)
             {
-              setRelay4(bool false)
+              setRelay4( false);
             }
 
             // Display the HTML web page
@@ -469,8 +474,10 @@ void buttonloop()
   }
   if ((millis() - lastDebounceTime1) > debounceDelay)
   {
+    
     if (ButtonSwitchNow1)
     {
+      Serial.println("ButtonSwitchNow1");
       ButtonSwitchNow1 = false;
       toggleRelay1();
     }
