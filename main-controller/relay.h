@@ -5,15 +5,15 @@ int ButtonPin2 = 25;
 int ButtonPin3 = 33;
 int ButtonPin4 = 32;
 
-bool ButtonState1 = LOW;
-bool ButtonState2 = LOW;
-bool ButtonState3 = LOW;
-bool ButtonState4 = LOW;
+bool ButtonState1 = false;
+bool ButtonState2 = false;
+bool ButtonState3 = false;
+bool ButtonState4 = false;
 
-bool LastButtonState1 = LOW;
-bool LastButtonState2 = LOW;
-bool LastButtonState3 = LOW;
-bool LastButtonState4 = LOW;
+bool LastButtonState1 = false;
+bool LastButtonState2 = false;
+bool LastButtonState3 = false;
+bool LastButtonState4 = false;
 
 bool ButtonSwitchNow1 = false;
 bool ButtonSwitchNow2 = false;
@@ -30,7 +30,7 @@ int Relay2 = 13;
 int Relay3 = 12;
 int Relay4 = 14;
 
-bool RelayState1 = LOW;
-bool RelayState2 = LOW;
-bool RelayState3 = LOW;
-bool RelayState4 = LOW;
+bool RelayState1 = false;
+bool RelayState2 = false;
+bool RelayState3 = false;
+bool RelayState4 = false;

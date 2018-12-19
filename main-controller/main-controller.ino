@@ -49,134 +49,45 @@
 #include <DallasTemperature.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
+
+/* create an instance of Preferences library */
+Preferences preferences;
 
 #include <esp32fota.h>
 #include <WiFi.h>
-#include <DNSServer.h>
 #include <ESPAsyncWebServer.h>
 
 #include "credentials.h"
 #include "relay.h"
+#include "html.h"
 
 // Add to 'credentials.h'
 // WiFi credentials for home network
 // const char* ssid = ".....";
 // const char* password = ".....";
+// 
+// const char* APssid = ".......";
+// const char* APpassword = ".......";
+//
+// String fotaURL = "";
 
 // MQTT server on PI
 // const char* mqtt_server = ".....";
 
 
-const byte DNS_PORT = 53;
-IPAddress apIP(192, 168, 1, 1);
-DNSServer dnsServer;
-
+bool wifiIsAP ;
 
 // Set web server port number to 80
 AsyncWebServer server(80);
 
-const char * html = "<!DOCTYPE html><html>"
-"<head>"
-"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
 
-"<link rel=\"icon\" href=\"data:,\">"
-
-"<style>"
-
-"html {"
-" font-family: Helvetica;"
-" display: inline-block;"
-" margin: 0px auto;"
-" text-align: center;"
-"}"
-
-"body {"
-" background-color: #000000;"
-"}"
-
-"h1 {"
-" color: #AAAAAA;"
-"}"
-
-"h2 {"
-" color: #CCCCCC;"
-" font-size:16px;"
-"}"
-
-".button-on {"
-" background:-webkit-gradient(linear, left top, left bottom, color-stop(0.05, #44c767), color-stop(1, #5cbf2a));"
-" background:-moz-linear-gradient(top, #44c767 5%, #5cbf2a 100%);"
-" background:-webkit-linear-gradient(top, #44c767 5%, #5cbf2a 100%);"
-" background:-o-linear-gradient(top, #44c767 5%, #5cbf2a 100%);"
-" background:-ms-linear-gradient(top, #44c767 5%, #5cbf2a 100%);"
-" background:linear-gradient(to bottom, #44c767 5%, #5cbf2a 100%);"
-" filter:progid:DXImageTransform.Microsoft.gradient(startColorstr='#44c767', endColorstr='#5cbf2a',GradientType=0);"
-" background-color:#44c767;"
-" -moz-border-radius:28px;"
-" -webkit-border-radius:28px;"
-" border-radius:28px;"
-" border:1px solid #18ab29;"
-" display:inline-block;"
-" cursor:pointer;"
-" color:#ffffff;"
-" font-family:Arial;"
-" font-size:16px;"
-" padding:18px 50px;"
-" text-decoration:none;"
-" text-shadow:0px 1px 0px #2f6627;"
-"}"
-
-".button-off {"
-" background:-webkit-gradient(linear, left top, left bottom, color-stop(0.05, #fc8d83), color-stop(1, #fc8d83));"
-" background:-moz-linear-gradient(top, #fc8d83 5%, #fc8d83 100%);"
-" background:-webkit-linear-gradient(top, #fc8d83 5%, #fc8d83 100%);"
-" background:-o-linear-gradient(top, #fc8d83 5%, #fc8d83 100%);"
-" background:-ms-linear-gradient(top, #fc8d83 5%, #fc8d83 100%);"
-" background:linear-gradient(to bottom, #fc8d83 5%, #fc8d83 100%);"
-" filter:progid:DXImageTransform.Microsoft.gradient(startColorstr='#fc8d83', endColorstr='#fc8d83',GradientType=0);"
-" background-color:#fc8d83;"
-" -moz-border-radius:28px;"
-" -webkit-border-radius:28px;"
-" border-radius:28px;"
-" border:1px solid #d83526;"
-" display:inline-block;"
-" cursor:pointer;"
-" color:#ffffff;"
-" font-family:Arial;"
-" font-size:16px;"
-" padding:18px 50px;"
-" text-decoration:none;"
-" text-shadow:0px 1px 0px #b23e35;"
-"}"
-
-"</style>"
-
-"<script type=\"text/javascript\">"
-"/* iOS re-orientation fix */"
-"if (navigator.userAgent.match(/iPhone/i) || navigator.userAgent.match(/iPad/i)) {"
-"    /* iOS hides Safari address bar */"
-"    window.addEventListener(\"load\",function() {"
-"        setTimeout(function() {"
-"            window.scrollTo(0, 1);"
-"        }, 1000);"
-"    });"
-"}"
-"</script>"
-
-"</head>"
-"<body><h1>Camper Control</h1>"
-
-"%BUTTON_1%"
-"%BUTTON_2%"
-"%BUTTON_3%"
-"%BUTTON_4%"
-
-"</body></html>";
-
-//"html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}"
-//".button { background-color: #4CAF50; border: none; color: white; padding: 16px 40px;"
-//"text-decoration: none; font-size: 30px; margin: 2px; cursor: pointer;"
-//".buttonoff {background-color: #555555;}"
+// Data wire is plugged into port 0 on the Arduino
+#define ONE_WIRE_BUS 0
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+unsigned long TemperatureUpdate = 0;
+float temperature = 0;
 
 int FirmwareUpdatePin = 27;
 bool FirmwareUpdateState = LOW;
@@ -184,11 +95,22 @@ bool FirmwareUpdateLastState = LOW;
 bool FirmwareUpdateNow = false;
 unsigned long FirmwareUpdateLastDebounceTime = 0;
 
-// esp32fota esp32fota("<Type of Firme for this device>", <this version>);
-// esp32FOTA esp32FOTA("esp32-fota-http", 1);
+esp32FOTA esp32FOTA("main-controller-ttgo.bin", 1);
 
 void setup()
 {
+  preferences.begin("my-app", false);
+  Serial.begin(115200);
+  Serial.println();
+
+  // Start up the Dallas Temperature Lib
+  sensors.begin();
+  
+  wifiIsAP = preferences.getBool("wifiIsAP",true);
+  Serial.printf("wifiIsAP value: %d\n", wifiIsAP);
+  Serial.print("wifiIsAP : ");
+  Serial.println(wifiIsAP);
+  
   pinMode(ButtonPin1, INPUT_PULLUP);
   pinMode(ButtonPin2, INPUT_PULLUP);
   pinMode(ButtonPin3, INPUT_PULLUP);
@@ -200,36 +122,78 @@ void setup()
   pinMode(Relay3, OUTPUT);
   pinMode(Relay4, OUTPUT);
 
+  RelayState1 = preferences.getBool("RelayState1",false);
+  RelayState2 = preferences.getBool("RelayState2",false);
+  RelayState3 = preferences.getBool("RelayState3",false);
+  RelayState4 = preferences.getBool("RelayState4",false);
+
+  Serial.printf("RelayState1 value: %d\n", RelayState1);
+  Serial.printf("RelayState2 value: %d\n", RelayState2);
+  Serial.printf("RelayState3 value: %d\n", RelayState3);
+  Serial.printf("RelayState4 value: %d\n", RelayState4);
+  
   digitalWrite(Relay1, !RelayState1);
   digitalWrite(Relay2, !RelayState2);
   digitalWrite(Relay3, !RelayState3);
   digitalWrite(Relay4, !RelayState4);
 
-  //esp32FOTA.checkURL = "http://server/fota/fota.json";
-  Serial.begin(115200);
-  
-  // setup_wifi();
-  setup_wifi_AP();
-  SetupWebServer() ;
+  esp32FOTA.checkURL = fotaURL;
+
+  if(wifiIsAP) {
+    Serial.println("Setting wifiIsAP to true");
+    Serial.println("Start as AP");
+    setup_wifi_AP();
+  } 
+  else 
+  {
+    Serial.println("Setting wifiIsAP to false");
+    Serial.println("Start as client");
+    setup_wifi_station();
+  }
+  delay(100);
+
+//  //ESP32 As access point IP: 192.168.4.1
+//  WiFi.mode(WIFI_AP); //Access Point mode
+//  WiFi.softAP("ESPWebServer", "12345678");    //Password length minimum 8 char
+// 
+////ESP32 connects to your wifi -----------------------------------
+//  WiFi.mode(WIFI_STA); //Connectto your wifi
+//  WiFi.begin(ssid, password);
+// 
+//  Serial.println("Connecting to ");
+//  Serial.print(ssid);
+// 
+//  //Wait for WiFi to connect
+//  while(WiFi.waitForConnectResult() != WL_CONNECTED){      
+//      Serial.print(".");
+//      delay(1000);
+//    }
+
+    
+  setupWebServer() ;
 
 }
 
 void setup_wifi_AP() {
   delay(10);
-  Serial.print("CSetting up AP ");
-  Serial.println(ssid);
-
-
+  Serial.print("Setting up AP : ");
+  Serial.println(APssid);
+  Serial.println(APpassword);
+  WiFi.mode(WIFI_MODE_NULL);
+  delay(50);
   WiFi.mode(WIFI_AP);
-  WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
+  delay(50);
+  WiFi.softAPConfig(IPAddress(10, 1, 1, 1), IPAddress(10, 1, 1, 1), IPAddress(255, 255, 255, 0));
+  delay(50);
+  //WiFi.softAP("ESPWebServer", "12345678");
   WiFi.softAP(APssid, APpassword);
-  // if DNSServer is started with "*" for domain name, it will reply with
-  // provided IP to all DNS request
-  dnsServer.start(DNS_PORT, "*", apIP);
-
+  wifiIsAP = true ;
+  preferences.putBool("wifiIsAP",true);
+  Serial.println("");
+  Serial.println(WiFi.softAPIP());
 }
 
-void setup_wifi()
+void setup_wifi_station()
 {
   delay(10);
   Serial.print("Connecting to ");
@@ -242,25 +206,81 @@ void setup_wifi()
     delay(500);
     Serial.print(".");
   }
-
+  wifiIsAP = false ;
+  preferences.putBool("wifiIsAP",false);
   Serial.println("");
   Serial.println(WiFi.localIP());
+
+
+  delay(250);
+  bool updatedNeeded = esp32FOTA.execHTTPcheck();
+  if (updatedNeeded)
+  {
+    preferences.end();
+    esp32FOTA.execOTA();
+  }
+  
+}
+
+void wifi_toggle()
+{
+   if(wifiIsAP) {
+    Serial.println("Setting wifiIsAP to false");
+    preferences.putBool("wifiIsAP",false);
+    wifiIsAP = false ;
+    delay(250);
+  } 
+  else {
+    Serial.println("Setting wifiIsAP to true");
+    preferences.putBool("wifiIsAP",true);
+    wifiIsAP = true ;
+    delay(250);
+  }
+
+  wifiIsAP = preferences.getBool("wifiIsAP",true);
+  Serial.printf("wifiIsAP value: %d\n", wifiIsAP);
+  
+  preferences.end();
+  delay(500);
+  ESP.restart();
+}
+
+
+void set_wifi_type(bool as_AP)
+{
+   if(as_AP) {
+    Serial.println("Setting wifiIsAP to true");
+    preferences.putBool("wifiIsAP",true);
+    wifiIsAP = true ;
+    delay(250);
+  } 
+  else {
+    Serial.println("Setting wifiIsAP to false");
+    preferences.putBool("wifiIsAP",false);
+    wifiIsAP = false ;
+    delay(250);
+  }
+
+  wifiIsAP = preferences.getBool("wifiIsAP",true);
+  Serial.printf("wifiIsAP value: %d\n", wifiIsAP);
+  
+  preferences.end();
+  delay(500);
+  ESP.restart();
 }
 
 void loop()
 {
-  dnsServer.processNextRequest();
   buttonloop();
   firmwareloop();
+  temperatureloop();
 }
 
+  
 void firmwareloop()
 {
   FirmwareUpdateState = digitalRead(FirmwareUpdatePin);
-
-//  Serial.print("FirmwareUpdateState : ");
-//  Serial.println(FirmwareUpdateState);
-
+  
   // Update Firmware Button
   if (!FirmwareUpdateState != FirmwareUpdateLastState)
   {
@@ -273,7 +293,8 @@ void firmwareloop()
   {
     if (FirmwareUpdateNow)
     {
-      Serial.println("This is where we should update the firmware");
+      FirmwareUpdateNow = false;
+      wifi_toggle() ;
     }
   }
 }
@@ -292,6 +313,7 @@ void toggleRelay1()
     RelayState1 = LOW;
     Serial.println("Relay 1 off");
   }
+   preferences.putBool("RelayState1",RelayState1);
 }
 
 void setRelay1(bool OnOff)
@@ -308,6 +330,7 @@ void setRelay1(bool OnOff)
     RelayState1 = LOW;
     Serial.println("Relay 1 off");
   }
+  preferences.putBool("RelayState1",RelayState1);
 }
 
 void toggleRelay2()
@@ -324,6 +347,7 @@ void toggleRelay2()
     RelayState2 = LOW;
     Serial.println("Relay 2 off");
   }
+  preferences.putBool("RelayState2",RelayState2);
 }
 
 void setRelay2(bool OnOff)
@@ -340,6 +364,7 @@ void setRelay2(bool OnOff)
     RelayState2 = LOW;
     Serial.println("Relay 2 off");
   }
+  preferences.putBool("RelayState2",RelayState2);
 }
 
 void toggleRelay3()
@@ -356,6 +381,7 @@ void toggleRelay3()
     RelayState3 = LOW;
     Serial.println("Relay 3 off");
   }
+  preferences.putBool("RelayState3",RelayState3);
 }
 
 void setRelay3(bool OnOff)
@@ -372,6 +398,7 @@ void setRelay3(bool OnOff)
     RelayState3 = LOW;
     Serial.println("Relay 3 off");
   }
+  preferences.putBool("RelayState3",RelayState3);
 }
 
 void toggleRelay4()
@@ -388,6 +415,7 @@ void toggleRelay4()
     RelayState4 = LOW;
     Serial.println("Relay 4 off");
   }
+  preferences.putBool("RelayState4",RelayState4);
 }
 
 void setRelay4(bool OnOff)
@@ -404,6 +432,7 @@ void setRelay4(bool OnOff)
     RelayState4 = LOW;
     Serial.println("Relay 4 off");
   }
+  preferences.putBool("RelayState4",RelayState4);
 }
 
 void buttonloop()
@@ -484,7 +513,7 @@ void buttonloop()
   }
 }
 
-void SetupWebServer()
+void setupWebServer()
 {
 
   server.onNotFound([](AsyncWebServerRequest *request){
@@ -534,6 +563,23 @@ void SetupWebServer()
     setRelay4(false);
     request->send_P(200, "text/html", html, processor);
   }); 
+
+    server.on("/wifi/station", HTTP_GET, [](AsyncWebServerRequest *request){
+    wifi_toggle() ;
+    request->send_P(200, "text/html", html, processor);
+  });
+
+    server.on("/wifi/ap", HTTP_GET, [](AsyncWebServerRequest *request){
+    wifi_toggle() ;
+    request->send_P(200, "text/html", html, processor);
+  });
+
+    server.on("/fw/update", HTTP_GET, [](AsyncWebServerRequest *request){
+    set_wifi_type(false);
+    request->send_P(200, "text/html", html, processor);
+  });
+
+  
   server.begin();
 }
 
@@ -541,14 +587,12 @@ void SetupWebServer()
 
 String processor(const String& var)
 {
- 
- // Serial.println(var);
+
   String match ;
   String title ;
   String label ;
   String link ; 
   String button ;
- // buttonon buttonoff
     
   if(var == "BUTTON_1"){
     
@@ -634,5 +678,55 @@ String processor(const String& var)
     
     return String(match);
   }
+else if(var == "MODE"){
+    title = "Night light";
+    if (wifiIsAP)
+    {
+      label = "wifi AP" ;
+      link = "/wifi/station";
+      button = "button-ap"; 
+    }
+    else
+    {
+      label = "wifi Station" ;
+      link = "/wifi/ap";
+      button = "button-station"; 
+    }
+    
+    match = "<a href=\""+ link+ "\"><button class=\"button "+ button +"\">"+label+"</button></a>" ;
+    
+    return String(match);
+  }
+ else if(var == "UPDATE"){
+
+      label = "wifi AP" ;
+      link = "/fw/update";
+      button = "button-fw"; 
+
+    match = "<a href=\""+ link+ "\"><button class=\"button "+ button +"\">"+label+"</button></a>" ;
+    
+    return String(match);
+  }
+
+  else if(var == "TEMPERATURE"){
+    char tempString[8];
+    dtostrf(temperature, 1, 2, tempString);   
+    match = "<h2>temperature : " + String(tempString)  + "</h2>" ;
+    
+    return String(match);
+  }
+
+
+
   return String();
+}
+
+
+void temperatureloop() {
+  if ((millis() - TemperatureUpdate) > 5000) 
+  {
+    sensors.requestTemperatures();
+    temperature =  sensors.getTempCByIndex(0) ;
+    TemperatureUpdate = millis() ;
+  }
 }
