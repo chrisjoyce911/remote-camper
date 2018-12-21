@@ -155,5 +155,6 @@ const char * html = "<!DOCTYPE html><html>"
 "%BUTTON_4%"
 "<p>%MODE% %UPDATE%</p>"
 "%TEMPERATURE%"
+"%CURRENT%"
 
 "</body></html>";

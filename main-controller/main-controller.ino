@@ -14,10 +14,10 @@
    2  [GPIO02][ADC2_2][HSPI_WP][TOUCH2]
  GND  [GROUND]
    0  [CLX1][GPIO00][ADC2_1][TOUCH1]    DallasTemperature
-   4  [GPIO04][ADC2_0][HSPI_HD][TOUCH0] ACS712 (Current
+   4  [GPIO04][ADC2_0][HSPI_HD][TOUCH0] DC Volts (10k-2.2k) 
   5v  [5V]
 
-  VP  [36][S_VP][GPIO36][ADC1_0*]
+  VP  [36][S_VP][GPIO36][ADC1_0*]        ACS712 (Current)
   VN  [39][S_VN][GPIO39][ADC1_3*]
  RST  [Reset]
   34  [GPIO34][ADC1_6*]
@@ -45,8 +45,6 @@
 [ESP32 GND – GND MICROSD]
 
 */
-#include <OneWire.h>
-#include <DallasTemperature.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
@@ -58,6 +56,10 @@ Preferences preferences;
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+#include "ACS712.h"
 #include "credentials.h"
 #include "relay.h"
 #include "html.h"
@@ -66,7 +68,7 @@ Preferences preferences;
 // WiFi credentials for home network
 // const char* ssid = ".....";
 // const char* password = ".....";
-// 
+//
 // const char* APssid = ".......";
 // const char* APpassword = ".......";
 //
@@ -75,19 +77,10 @@ Preferences preferences;
 // MQTT server on PI
 // const char* mqtt_server = ".....";
 
-
-bool wifiIsAP ;
+bool wifiIsAP;
 
 // Set web server port number to 80
 AsyncWebServer server(80);
-
-
-// Data wire is plugged into port 0 on the Arduino
-#define ONE_WIRE_BUS 0
-OneWire oneWire(ONE_WIRE_BUS);
-DallasTemperature sensors(&oneWire);
-unsigned long TemperatureUpdate = 0;
-float temperature = 0;
 
 int FirmwareUpdatePin = 27;
 bool FirmwareUpdateState = LOW;
@@ -97,20 +90,31 @@ unsigned long FirmwareUpdateLastDebounceTime = 0;
 
 esp32FOTA esp32FOTA("main-controller-ttgo.bin", 1);
 
+String current = "";
+ACS712 CurrentSensor(ACS712_20A, 36);
+
+
+OneWire oneWire(0);
+DallasTemperature sensors(&oneWire);
+
+String currentTemperature = "";
+float currentTemperatureFloat = 0;
+
 void setup()
 {
   preferences.begin("my-app", false);
   Serial.begin(115200);
   Serial.println();
 
-  // Start up the Dallas Temperature Lib
+  int zero = CurrentSensor.calibrate();
+
   sensors.begin();
   
-  wifiIsAP = preferences.getBool("wifiIsAP",true);
+  wifiIsAP = preferences.getBool("wifiIsAP", true);
   Serial.printf("wifiIsAP value: %d\n", wifiIsAP);
   Serial.print("wifiIsAP : ");
   Serial.println(wifiIsAP);
-  
+
   pinMode(ButtonPin1, INPUT_PULLUP);
   pinMode(ButtonPin2, INPUT_PULLUP);
   pinMode(ButtonPin3, INPUT_PULLUP);
@@ -122,16 +126,16 @@ void setup()
   pinMode(Relay3, OUTPUT);
   pinMode(Relay4, OUTPUT);
 
-  RelayState1 = preferences.getBool("RelayState1",false);
-  RelayState2 = preferences.getBool("RelayState2",false);
-  RelayState3 = preferences.getBool("RelayState3",false);
-  RelayState4 = preferences.getBool("RelayState4",false);
+  RelayState1 = preferences.getBool("RelayState1", false);
+  RelayState2 = preferences.getBool("RelayState2", false);
+  RelayState3 = preferences.getBool("RelayState3", false);
+  RelayState4 = preferences.getBool("RelayState4", false);
 
   Serial.printf("RelayState1 value: %d\n", RelayState1);
   Serial.printf("RelayState2 value: %d\n", RelayState2);
   Serial.printf("RelayState3 value: %d\n", RelayState3);
   Serial.printf("RelayState4 value: %d\n", RelayState4);
-  
+
   digitalWrite(Relay1, !RelayState1);
   digitalWrite(Relay2, !RelayState2);
   digitalWrite(Relay3, !RelayState3);
@@ -139,12 +143,13 @@ void setup()
 
   esp32FOTA.checkURL = fotaURL;
 
-  if(wifiIsAP) {
+  if (wifiIsAP)
+  {
     Serial.println("Setting wifiIsAP to true");
     Serial.println("Start as AP");
     setup_wifi_AP();
-  } 
-  else 
+  }
+  else
   {
     Serial.println("Setting wifiIsAP to false");
     Serial.println("Start as client");
@@ -152,29 +157,28 @@ void setup()
   }
   delay(100);
 
-//  //ESP32 As access point IP: 192.168.4.1
-//  WiFi.mode(WIFI_AP); //Access Point mode
-//  WiFi.softAP("ESPWebServer", "12345678");    //Password length minimum 8 char
-// 
-////ESP32 connects to your wifi -----------------------------------
-//  WiFi.mode(WIFI_STA); //Connectto your wifi
-//  WiFi.begin(ssid, password);
-// 
-//  Serial.println("Connecting to ");
-//  Serial.print(ssid);
-// 
-//  //Wait for WiFi to connect
-//  while(WiFi.waitForConnectResult() != WL_CONNECTED){      
-//      Serial.print(".");
-//      delay(1000);
-//    }
+  //  //ESP32 As access point IP: 192.168.4.1
+  //  WiFi.mode(WIFI_AP); //Access Point mode
+  //  WiFi.softAP("ESPWebServer", "12345678");    //Password length minimum 8 char
+  //
+  ////ESP32 connects to your wifi -----------------------------------
+  //  WiFi.mode(WIFI_STA); //Connectto your wifi
+  //  WiFi.begin(ssid, password);
+  //
+  //  Serial.println("Connecting to ");
+  //  Serial.print(ssid);
+  //
+  //  //Wait for WiFi to connect
+  //  while(WiFi.waitForConnectResult() != WL_CONNECTED){
+  //      Serial.print(".");
+  //      delay(1000);
+  //    }
 
-    
-  setupWebServer() ;
-
+  setupWebServer();
 }
 
-void setup_wifi_AP() {
+void setup_wifi_AP()
+{
   delay(10);
   Serial.print("Setting up AP : ");
   Serial.println(APssid);
@@ -187,8 +191,8 @@ void setup_wifi_AP() {
   delay(50);
   //WiFi.softAP("ESPWebServer", "12345678");
   WiFi.softAP(APssid, APpassword);
-  wifiIsAP = true ;
-  preferences.putBool("wifiIsAP",true);
+  wifiIsAP = true;
+  preferences.putBool("wifiIsAP", true);
   Serial.println("");
   Serial.println(WiFi.softAPIP());
 }
@@ -206,11 +210,10 @@ void setup_wifi_station()
     delay(500);
     Serial.print(".");
   }
-  wifiIsAP = false ;
-  preferences.putBool("wifiIsAP",false);
+  wifiIsAP = false;
+  preferences.putBool("wifiIsAP", false);
   Serial.println("");
   Serial.println(WiFi.localIP());
-
 
   delay(250);
   bool updatedNeeded = esp32FOTA.execHTTPcheck();
@@ -219,51 +222,53 @@ void setup_wifi_station()
     preferences.end();
     esp32FOTA.execOTA();
   }
-  
 }
 
 void wifi_toggle()
 {
-   if(wifiIsAP) {
+  if (wifiIsAP)
+  {
     Serial.println("Setting wifiIsAP to false");
-    preferences.putBool("wifiIsAP",false);
-    wifiIsAP = false ;
+    preferences.putBool("wifiIsAP", false);
+    wifiIsAP = false;
     delay(250);
-  } 
-  else {
+  }
+  else
+  {
     Serial.println("Setting wifiIsAP to true");
-    preferences.putBool("wifiIsAP",true);
-    wifiIsAP = true ;
+    preferences.putBool("wifiIsAP", true);
+    wifiIsAP = true;
     delay(250);
   }
 
-  wifiIsAP = preferences.getBool("wifiIsAP",true);
+  wifiIsAP = preferences.getBool("wifiIsAP", true);
   Serial.printf("wifiIsAP value: %d\n", wifiIsAP);
-  
+
   preferences.end();
   delay(500);
   ESP.restart();
 }
 
-
 void set_wifi_type(bool as_AP)
 {
-   if(as_AP) {
+  if (as_AP)
+  {
     Serial.println("Setting wifiIsAP to true");
-    preferences.putBool("wifiIsAP",true);
-    wifiIsAP = true ;
+    preferences.putBool("wifiIsAP", true);
+    wifiIsAP = true;
     delay(250);
-  } 
-  else {
+  }
+  else
+  {
     Serial.println("Setting wifiIsAP to false");
-    preferences.putBool("wifiIsAP",false);
-    wifiIsAP = false ;
+    preferences.putBool("wifiIsAP", false);
+    wifiIsAP = false;
     delay(250);
   }
 
-  wifiIsAP = preferences.getBool("wifiIsAP",true);
+  wifiIsAP = preferences.getBool("wifiIsAP", true);
   Serial.printf("wifiIsAP value: %d\n", wifiIsAP);
-  
+
   preferences.end();
   delay(500);
   ESP.restart();
@@ -273,14 +278,14 @@ void loop()
 {
   buttonloop();
   firmwareloop();
-  temperatureloop();
+  // temploop();
+  // currentloop();
 }
 
-  
 void firmwareloop()
 {
   FirmwareUpdateState = digitalRead(FirmwareUpdatePin);
-  
+
   // Update Firmware Button
   if (!FirmwareUpdateState != FirmwareUpdateLastState)
   {
@@ -294,9 +299,22 @@ void firmwareloop()
     if (FirmwareUpdateNow)
     {
       FirmwareUpdateNow = false;
-      wifi_toggle() ;
+      wifi_toggle();
     }
   }
+}
+
+
+void currentloop() {
+  // Read current from sensor
+  float I = CurrentSensor.getCurrentDC();
+
+  current = String("I = ") + I + " A" ;
+  // Send it to serial
+  Serial.println(String("I = ") + I + " A");
+  
+  // Wait a second before the new measurement
+  delay(1000);
 }
 
 void toggleRelay1()
@@ -313,7 +331,7 @@ void toggleRelay1()
     RelayState1 = LOW;
     Serial.println("Relay 1 off");
   }
-   preferences.putBool("RelayState1",RelayState1);
+  preferences.putBool("RelayState1", RelayState1);
 }
 
 void setRelay1(bool OnOff)
@@ -330,7 +348,7 @@ void setRelay1(bool OnOff)
     RelayState1 = LOW;
     Serial.println("Relay 1 off");
   }
-  preferences.putBool("RelayState1",RelayState1);
+  preferences.putBool("RelayState1", RelayState1);
 }
 
 void toggleRelay2()
@@ -347,7 +365,7 @@ void toggleRelay2()
     RelayState2 = LOW;
     Serial.println("Relay 2 off");
   }
-  preferences.putBool("RelayState2",RelayState2);
+  preferences.putBool("RelayState2", RelayState2);
 }
 
 void setRelay2(bool OnOff)
@@ -364,7 +382,7 @@ void setRelay2(bool OnOff)
     RelayState2 = LOW;
     Serial.println("Relay 2 off");
   }
-  preferences.putBool("RelayState2",RelayState2);
+  preferences.putBool("RelayState2", RelayState2);
 }
 
 void toggleRelay3()
@@ -381,7 +399,7 @@ void toggleRelay3()
     RelayState3 = LOW;
     Serial.println("Relay 3 off");
   }
-  preferences.putBool("RelayState3",RelayState3);
+  preferences.putBool("RelayState3", RelayState3);
 }
 
 void setRelay3(bool OnOff)
@@ -398,7 +416,7 @@ void setRelay3(bool OnOff)
     RelayState3 = LOW;
     Serial.println("Relay 3 off");
   }
-  preferences.putBool("RelayState3",RelayState3);
+  preferences.putBool("RelayState3", RelayState3);
 }
 
 void toggleRelay4()
@@ -415,7 +433,7 @@ void toggleRelay4()
     RelayState4 = LOW;
     Serial.println("Relay 4 off");
   }
-  preferences.putBool("RelayState4",RelayState4);
+  preferences.putBool("RelayState4", RelayState4);
 }
 
 void setRelay4(bool OnOff)
@@ -432,7 +450,7 @@ void setRelay4(bool OnOff)
     RelayState4 = LOW;
     Serial.println("Relay 4 off");
   }
-  preferences.putBool("RelayState4",RelayState4);
+  preferences.putBool("RelayState4", RelayState4);
 }
 
 void buttonloop()
@@ -453,7 +471,7 @@ void buttonloop()
   }
   if ((millis() - lastDebounceTime1) > debounceDelay)
   {
-    
+
     if (ButtonSwitchNow1)
     {
       ButtonSwitchNow1 = false;
@@ -516,217 +534,230 @@ void buttonloop()
 void setupWebServer()
 {
 
-  server.onNotFound([](AsyncWebServerRequest *request){
+  server.onNotFound([](AsyncWebServerRequest *request) {
     request->send_P(200, "text/html", html, processor);
   });
-  
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send_P(200, "text/html", html, processor);
   });
- 
-    server.on("/01/on", HTTP_GET, [](AsyncWebServerRequest *request){
+
+  server.on("/01/on", HTTP_GET, [](AsyncWebServerRequest *request) {
     setRelay1(true);
     request->send_P(200, "text/html", html, processor);
   });
 
-    server.on("/01/off", HTTP_GET, [](AsyncWebServerRequest *request){
+  server.on("/01/off", HTTP_GET, [](AsyncWebServerRequest *request) {
     setRelay1(false);
     request->send_P(200, "text/html", html, processor);
   });
 
-    server.on("/02/on", HTTP_GET, [](AsyncWebServerRequest *request){
+  server.on("/02/on", HTTP_GET, [](AsyncWebServerRequest *request) {
     setRelay2(true);
     request->send_P(200, "text/html", html, processor);
   });
 
-    server.on("/02/off", HTTP_GET, [](AsyncWebServerRequest *request){
+  server.on("/02/off", HTTP_GET, [](AsyncWebServerRequest *request) {
     setRelay2(false);
     request->send_P(200, "text/html", html, processor);
   });
 
-      server.on("/03/on", HTTP_GET, [](AsyncWebServerRequest *request){
+  server.on("/03/on", HTTP_GET, [](AsyncWebServerRequest *request) {
     setRelay3(true);
     request->send_P(200, "text/html", html, processor);
   });
 
-    server.on("/03/off", HTTP_GET, [](AsyncWebServerRequest *request){
+  server.on("/03/off", HTTP_GET, [](AsyncWebServerRequest *request) {
     setRelay3(false);
     request->send_P(200, "text/html", html, processor);
   });
 
-      server.on("/04/on", HTTP_GET, [](AsyncWebServerRequest *request){
+  server.on("/04/on", HTTP_GET, [](AsyncWebServerRequest *request) {
     setRelay4(true);
     request->send_P(200, "text/html", html, processor);
   });
 
-    server.on("/04/off", HTTP_GET, [](AsyncWebServerRequest *request){
+  server.on("/04/off", HTTP_GET, [](AsyncWebServerRequest *request) {
     setRelay4(false);
     request->send_P(200, "text/html", html, processor);
-  }); 
+  });
 
-    server.on("/wifi/station", HTTP_GET, [](AsyncWebServerRequest *request){
-    wifi_toggle() ;
+  server.on("/wifi/station", HTTP_GET, [](AsyncWebServerRequest *request) {
+    wifi_toggle();
     request->send_P(200, "text/html", html, processor);
   });
 
-    server.on("/wifi/ap", HTTP_GET, [](AsyncWebServerRequest *request){
-    wifi_toggle() ;
+  server.on("/wifi/ap", HTTP_GET, [](AsyncWebServerRequest *request) {
+    wifi_toggle();
     request->send_P(200, "text/html", html, processor);
   });
 
-    server.on("/fw/update", HTTP_GET, [](AsyncWebServerRequest *request){
+  server.on("/fw/update", HTTP_GET, [](AsyncWebServerRequest *request) {
     set_wifi_type(false);
     request->send_P(200, "text/html", html, processor);
   });
 
-  
   server.begin();
 }
 
-
-
-String processor(const String& var)
+String processor(const String &var)
 {
 
-  String match ;
-  String title ;
-  String label ;
-  String link ; 
-  String button ;
-    
-  if(var == "BUTTON_1"){
-    
+  String match;
+  String title;
+  String label;
+  String link;
+  String button;
+
+  if (var == "BUTTON_1")
+  {
+
     title = "Main light";
     if (RelayState1)
     {
-      label = "On" ;
+      label = "On";
       link = "/01/off";
-      button = "button-on"; 
+      button = "button-on";
     }
     else
     {
-      label = "Off" ;
+      label = "Off";
       link = "/01/on";
-      button = "button-off"; 
+      button = "button-off";
     }
-            
+
     match = "<h2>" + title + "</h2>"
-    "<p><a href=\""+ link+ "\"><button class=\""+ button +"\">"+label+"</button></a></p>" ;
-    
+                             "<p><a href=\"" +
+            link + "\"><button class=\"" + button + "\">" + label + "</button></a></p>";
+
     return String(match);
   }
- 
-  else if(var == "BUTTON_2"){
+
+  else if (var == "BUTTON_2")
+  {
     title = "Bed light";
     if (RelayState2)
     {
-      label = "On" ;
+      label = "On";
       link = "/02/off";
-      button = "button-on"; 
+      button = "button-on";
     }
     else
     {
-      label = "Off" ;
+      label = "Off";
       link = "/02/on";
-      button = "button-off"; 
+      button = "button-off";
     }
-    
+
     match = "<h2>" + title + "</h2>"
-    "<p><a href=\""+ link+ "\"><button class=\""+ button +"\">"+label+"</button></a></p>" ;
-    
+                             "<p><a href=\"" +
+            link + "\"><button class=\"" + button + "\">" + label + "</button></a></p>";
+
     return String(match);
   }
 
-   else if(var == "BUTTON_3"){
+  else if (var == "BUTTON_3")
+  {
     title = "Tool Box";
     if (RelayState3)
     {
-      label = "On" ;
+      label = "On";
       link = "/03/off";
-      button = "button-on"; 
+      button = "button-on";
     }
     else
     {
-      label = "Off" ;
+      label = "Off";
       link = "/03/on";
-      button = "button-off"; 
+      button = "button-off";
     }
-    
+
     match = "<h2>" + title + "</h2>"
-    "<p><a href=\""+ link+ "\"><button class=\"button "+ button +"\">"+label+"</button></a></p>" ;
-    
+                             "<p><a href=\"" +
+            link + "\"><button class=\"button " + button + "\">" + label + "</button></a></p>";
+
     return String(match);
   }
 
-    else if(var == "BUTTON_4"){
+  else if (var == "BUTTON_4")
+  {
     title = "Night light";
     if (RelayState4)
     {
-      label = "On" ;
+      label = "On";
       link = "/04/off";
-      button = "button-on"; 
+      button = "button-on";
     }
     else
     {
-      label = "Off" ;
+      label = "Off";
       link = "/04/on";
-      button = "button-off"; 
+      button = "button-off";
     }
-    
+
     match = "<h2>" + title + "</h2>"
-    "<p><a href=\""+ link+ "\"><button class=\"button "+ button +"\">"+label+"</button></a></p>" ;
-    
+                             "<p><a href=\"" +
+            link + "\"><button class=\"button " + button + "\">" + label + "</button></a></p>";
+
     return String(match);
   }
-else if(var == "MODE"){
+  else if (var == "MODE")
+  {
     title = "Night light";
     if (wifiIsAP)
     {
-      label = "wifi AP" ;
+      label = "wifi AP";
       link = "/wifi/station";
-      button = "button-ap"; 
+      button = "button-ap";
     }
     else
     {
-      label = "wifi Station" ;
+      label = "wifi Station";
       link = "/wifi/ap";
-      button = "button-station"; 
+      button = "button-station";
     }
-    
-    match = "<a href=\""+ link+ "\"><button class=\"button "+ button +"\">"+label+"</button></a>" ;
-    
+
+    match = "<a href=\"" + link + "\"><button class=\"button " + button + "\">" + label + "</button></a>";
+
     return String(match);
   }
- else if(var == "UPDATE"){
+  else if (var == "UPDATE")
+  {
 
-      label = "wifi AP" ;
-      link = "/fw/update";
-      button = "button-fw"; 
+    label = "wifi AP";
+    link = "/fw/update";
+    button = "button-fw";
 
-    match = "<a href=\""+ link+ "\"><button class=\"button "+ button +"\">"+label+"</button></a>" ;
-    
-    return String(match);
-  }
+    match = "<a href=\"" + link + "\"><button class=\"button " + button + "\">" + label + "</button></a>";
 
-  else if(var == "TEMPERATURE"){
-    char tempString[8];
-    dtostrf(temperature, 1, 2, tempString);   
-    match = "<h2>temperature : " + String(tempString)  + "</h2>" ;
-    
     return String(match);
   }
 
+  else if (var == "TEMPERATURE")
+  {
+
+    temploop() ;
+    match = "<h2>temperature : " + currentTemperature + "</h2>";
+    return String(match);
+  }
+
+  else if (var == "CURRENT")
+  {
+    currentloop() ;
+    match = "<h2>current : " + current + "</h2>";
+    return String(match);
+  }
 
 
   return String();
 }
 
 
-void temperatureloop() {
-  if ((millis() - TemperatureUpdate) > 5000) 
-  {
-    sensors.requestTemperatures();
-    temperature =  sensors.getTempCByIndex(0) ;
-    TemperatureUpdate = millis() ;
-  }
+void temploop()
+{
+  sensors.requestTemperatures();
+  currentTemperatureFloat = sensors.getTempCByIndex(0);
+  char tempString[8];
+  dtostrf(currentTemperatureFloat, 1, 2, tempString);
+  currentTemperature = String(tempString);
 }
